@@ -49,6 +49,8 @@ object ActorSystemSpec {
           master ! "done"
           context stop self
         }
+      case "dump" ⇒
+        println(s"$self still waiting for $terminaters")
     }
 
     override def preRestart(cause: Throwable, msg: Option[Any]) {
@@ -126,11 +128,11 @@ class ActorSystemSpec extends AkkaSpec(ActorSystemSpec.config) with ImplicitSend
 
   "An ActorSystem" must {
 
-    "use scala.concurrent.Future's InternalCallbackEC" in {
+    "use scala.concurrent.Future's InternalCallbackEC" ignore {
       system.asInstanceOf[ActorSystemImpl].internalCallingThreadExecutionContext.getClass.getName must be === "scala.concurrent.Future$InternalCallbackExecutor$"
     }
 
-    "reject invalid names" in {
+    "reject invalid names" ignore {
       for (
         n ← Seq(
           "hallo_welt",
@@ -146,18 +148,18 @@ class ActorSystemSpec extends AkkaSpec(ActorSystemSpec.config) with ImplicitSend
       }
     }
 
-    "allow valid names" in {
+    "allow valid names" ignore {
       shutdown(ActorSystem("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-"))
     }
 
-    "support extensions" in {
+    "support extensions" ignore {
       // TestExtension is configured and should be loaded at startup
       system.hasExtension(TestExtension) must be(true)
       TestExtension(system).system must be === system
       system.extension(TestExtension).system must be === system
     }
 
-    "run termination callbacks in order" in {
+    "run termination callbacks in order" ignore {
       val system2 = ActorSystem("TerminationCallbacks", AkkaSpec.testConf)
       val result = new ConcurrentLinkedQueue[Int]
       val count = 10
@@ -179,7 +181,7 @@ class ActorSystemSpec extends AkkaSpec(ActorSystemSpec.config) with ImplicitSend
       immutableSeq(result) must be(expected)
     }
 
-    "awaitTermination after termination callbacks" in {
+    "awaitTermination after termination callbacks" ignore {
       val system2 = ActorSystem("AwaitTermination", AkkaSpec.testConf)
       @volatile
       var callbackWasRun = false
@@ -195,7 +197,7 @@ class ActorSystemSpec extends AkkaSpec(ActorSystemSpec.config) with ImplicitSend
       callbackWasRun must be(true)
     }
 
-    "return isTerminated status correctly" in {
+    "return isTerminated status correctly" ignore {
       val system = ActorSystem()
       system.isTerminated must be(false)
       system.shutdown()
@@ -203,7 +205,7 @@ class ActorSystemSpec extends AkkaSpec(ActorSystemSpec.config) with ImplicitSend
       system.isTerminated must be(true)
     }
 
-    "throw RejectedExecutionException when shutdown" in {
+    "throw RejectedExecutionException when shutdown" ignore {
       val system2 = ActorSystem("AwaitTermination", AkkaSpec.testConf)
       system2.shutdown()
       system2.awaitTermination(10 seconds)
@@ -214,18 +216,26 @@ class ActorSystemSpec extends AkkaSpec(ActorSystemSpec.config) with ImplicitSend
     }
 
     "reliably create waves of actors" in {
-      import system.dispatcher
-      implicit val timeout = Timeout(30 seconds)
-      val waves = for (i ← 1 to 3) yield system.actorOf(Props[ActorSystemSpec.Waves]) ? 50000
-      Await.result(Future.sequence(waves), timeout.duration + 5.seconds) must be === Seq("done", "done", "done")
+      val waveActors = for (i ← 1 to 3) yield system.actorOf(Props[ActorSystemSpec.Waves], s"Waves-${i}")
+      try {
+        import system.dispatcher
+        implicit val timeout = Timeout(30 seconds)
+        val waves = waveActors map (_ ? 50000)
+        Await.result(Future.sequence(waves), timeout.duration + 5.seconds) must be === Seq("done", "done", "done")
+      } catch {
+        case t: Throwable ⇒
+          println(system.asInstanceOf[ActorSystemImpl].printTree)
+          waveActors foreach (_ ! "dump")
+          throw t
+      }
     }
 
-    "find actors that just have been created" in {
+    "find actors that just have been created" ignore {
       system.actorOf(Props(new FastActor(TestLatch(), testActor)).withDispatcher("slow"))
       expectMsgType[Class[_]] must be(classOf[LocalActorRef])
     }
 
-    "reliable deny creation of actors while shutting down" in {
+    "reliable deny creation of actors while shutting down" ignore {
       val system = ActorSystem()
       import system.dispatcher
       system.scheduler.scheduleOnce(200 millis) { system.shutdown() }
@@ -250,7 +260,7 @@ class ActorSystemSpec extends AkkaSpec(ActorSystemSpec.config) with ImplicitSend
       created filter (ref ⇒ !ref.isTerminated && !ref.asInstanceOf[ActorRefWithCell].underlying.isInstanceOf[UnstartedCell]) must be(Seq())
     }
 
-    "shut down when /user fails" in {
+    "shut down when /user fails" ignore {
       implicit val system = ActorSystem("Stop", AkkaSpec.testConf)
       EventFilter[ActorKilledException]() intercept {
         system.actorSelection("/user") ! Kill
@@ -258,7 +268,7 @@ class ActorSystemSpec extends AkkaSpec(ActorSystemSpec.config) with ImplicitSend
       }
     }
 
-    "allow configuration of guardian supervisor strategy" in {
+    "allow configuration of guardian supervisor strategy" ignore {
       implicit val system = ActorSystem("Stop",
         ConfigFactory.parseString("akka.actor.guardian-supervisor-strategy=akka.actor.StoppingSupervisorStrategy")
           .withFallback(AkkaSpec.testConf))
@@ -278,7 +288,7 @@ class ActorSystemSpec extends AkkaSpec(ActorSystemSpec.config) with ImplicitSend
       shutdown(system)
     }
 
-    "shut down when /user escalates" in {
+    "shut down when /user escalates" ignore {
       implicit val system = ActorSystem("Stop",
         ConfigFactory.parseString("akka.actor.guardian-supervisor-strategy=\"akka.actor.ActorSystemSpec$Strategy\"")
           .withFallback(AkkaSpec.testConf))
