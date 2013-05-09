@@ -200,13 +200,6 @@ object ClusterEvent {
 
       val allNewUnreachable = newGossip.overview.unreachable -- oldGossip.overview.unreachable
 
-      val unreachableGroupedByAddress =
-        List(newGossip.overview.unreachable, oldGossip.overview.unreachable).flatten.groupBy(_.uniqueAddress)
-      val unreachableDownMembers = unreachableGroupedByAddress collect {
-        case (_, newMember :: oldMember :: Nil) if newMember.status == Down && newMember.status != oldMember.status ⇒
-          newMember
-      }
-
       val removedMembers = (oldGossip.members -- newGossip.members -- newGossip.overview.unreachable) ++
         (oldGossip.overview.unreachable -- newGossip.overview.unreachable)
       val removedEvents = removedMembers.map(m ⇒ MemberRemoved(m.copy(status = Removed)))
