@@ -64,7 +64,7 @@ object Props {
    *
    * Scala API.
    */
-  def apply[T <: Actor: ClassTag](): Props = apply(implicitly[ClassTag[T]].runtimeClass)
+  def apply[T <: Actor: ClassTag](): Props = apply(defaultDeploy, implicitly[ClassTag[T]].runtimeClass, Vector.empty)
 
   /**
    * Returns a Props that has default values except for "creator" which will be a function that creates an instance
@@ -137,7 +137,7 @@ object Props {
 case class Props(deploy: Deploy, clazz: Class[_], args: immutable.Seq[Any]) {
 
   // validate constructor signature; throws IllegalArgumentException if invalid
-  Reflect.findConstructor(clazz, args)
+  private val constructor = Reflect.findConstructor(clazz, args)
 
   /**
    * No-args constructor that sets all the default values.
@@ -250,7 +250,7 @@ case class Props(deploy: Deploy, clazz: Class[_], args: immutable.Seq[Any]) {
    * used within the implementation of [[IndirectActorProducer#produce]].
    */
   def newActor(): Actor = {
-    Reflect.instantiate(clazz, args) match {
+    Reflect.instantiate(constructor, args) match {
       case a: Actor                 ⇒ a
       case i: IndirectActorProducer ⇒ i.produce()
       case _                        ⇒ throw new IllegalArgumentException(s"unknown actor creator [$clazz]")
@@ -259,7 +259,7 @@ case class Props(deploy: Deploy, clazz: Class[_], args: immutable.Seq[Any]) {
 
   private lazy val cachedActorClass: Class[_ <: Actor] = {
     if (classOf[IndirectActorProducer].isAssignableFrom(clazz)) {
-      Reflect.instantiate(clazz, args).asInstanceOf[IndirectActorProducer].actorClass
+      Reflect.instantiate(constructor, args).asInstanceOf[IndirectActorProducer].actorClass
     } else if (classOf[Actor].isAssignableFrom(clazz)) {
       clazz.asInstanceOf[Class[_ <: Actor]]
     } else {
